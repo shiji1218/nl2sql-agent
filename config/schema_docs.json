@@ -1,0 +1,114 @@
+{
+  "_说明": "业务文档层：Olist 巴西电商数据集。表/字段的人读业务含义注入 LLM 提示词。MySQL 真实 COMMENT 已在导入时写入，此处为业务口径补充（两者叠加）。",
+  "_metrics": {
+    "销售额": "SUM(order_items.price)，不含运费 freight_value；含运费需明确说明",
+    "客单价": "每笔订单的平均金额 = SUM(order_items.price) / COUNT(DISTINCT order_id)，不含运费。注意不要用 order_payments 的 AVG(payment_value)（一笔订单可能多行支付记录，且含运费）",
+    "客户数": "COUNT(DISTINCT customer_unique_id)（同一人多次下单只算一个客户），不要用 customers 行数（每单一行）",
+    "订单量": "COUNT(*) FROM orders 或 COUNT(DISTINCT order_id)",
+    "各支付方式的订单数": "从 order_payments 按支付方式统计时必须用 COUNT(DISTINCT order_id)（一笔订单可能拆成多行支付记录，COUNT(*) 会重复计数）",
+    "商品件数": "COUNT(*) FROM order_items（每行一件商品）",
+    "运费占比": "SUM(order_items.freight_value) / SUM(order_items.price)，分母是销售额(不含运费)",
+    "履约延迟天数": "DATEDIFF(order_delivered_customer_date, order_estimated_delivery_date)，正数=晚于预计送达",
+    "提前/延迟送达比例": "只统计已送达订单（order_delivered_customer_date IS NOT NULL），用 AVG(CASE WHEN DATEDIFF(实际,预计)<0 THEN 1 ELSE 0 END) 算提前比例，>0 算延迟比例",
+    "复购": "同一 customer_unique_id 出现次数 > 1"
+  },
+  "tables": {
+    "orders": {
+      "description": "订单主表：每行一笔订单。9.9万订单，时间跨度2016-09至2018-10",
+      "columns": {
+        "order_id": "订单ID，主键",
+        "customer_id": "下单客户ID，关联 customers.id",
+        "order_status": "订单状态：delivered已送达(约97%)/shipped已发货/canceled已取消/unavailable不可用/invoiced已开票/processing处理中/created已创建/approved已批准",
+        "order_purchase_timestamp": "下单时间（DATETIME，一切时间分析以此为准）",
+        "order_approved_at": "支付审批时间",
+        "order_delivered_carrier_date": "交付物流商时间",
+        "order_delivered_customer_date": "客户实际签收时间（可能为NULL=未送达）",
+        "order_estimated_delivery_date": "预计送达时间；实际签收晚于此时间=履约延迟，用 DATEDIFF 计算"
+      }
+    },
+    "customers": {
+      "description": "客户表：每行一笔订单的客户信息（customer_id每单唯一）。真实客户用 customer_unique_id 标识，复购=同一unique_id出现多次",
+      "columns": {
+        "customer_id": "客户订单ID，主键，关联 orders.customer_id",
+        "customer_unique_id": "客户唯一ID（同一人多次下单不变），复购分析必用",
+        "customer_zip_code_prefix": "邮编前缀",
+        "customer_city": "所在城市（小写葡语，如 sao paulo）",
+        "customer_state": "所在州缩写（SP圣保罗/RJ里约/MG米纳斯等27州）"
+      }
+    },
+    "order_items": {
+      "description": "订单明细表：每行订单中的一个商品条目。商品维度销售额=SUM(price)，不含运费",
+      "columns": {
+        "order_id": "订单ID，关联 orders",
+        "order_item_id": "订单内行号（1开始递增），每订单行数=商品件数",
+        "product_id": "商品ID，关联 products",
+        "seller_id": "卖家ID，关联 sellers",
+        "shipping_limit_date": "卖家承诺发货截止时间",
+        "price": "商品成交价（雷亚尔），销售额口径（不含运费）",
+        "freight_value": "运费；总费用=price+freight_value"
+      }
+    },
+    "order_payments": {
+      "description": "支付表：一笔订单可分多次支付（payment_sequential序号），算每单支付总额需SUM",
+      "columns": {
+        "order_id": "订单ID",
+        "payment_sequential": "支付序号",
+        "payment_type": "支付方式：credit_card信用卡/boleto巴西线下票据/voucher代金券/debit_card借记卡/not_defined未定义",
+        "payment_installments": "分期期数（1=不分期，最高24期）",
+        "payment_value": "本笔支付金额（含运费），与 order_items 的 price+freight 总和基本一致"
+      }
+    },
+    "order_reviews": {
+      "description": "评价表：每行一条订单评价（已按review_id去重）",
+      "columns": {
+        "review_id": "评价ID，主键",
+        "order_id": "订单ID",
+        "review_score": "评分1-5（1最差5最好），口碑核心指标",
+        "review_comment_title": "评论标题（葡语，多数为空）",
+        "review_comment_message": "评论正文（葡语，约40%非空）",
+        "review_creation_date": "评价发起日期",
+        "review_answer_timestamp": "评价回收时间"
+      }
+    },
+    "products": {
+      "description": "商品表：3.3万商品。品类名是葡萄牙语，查品类需关联翻译表取英文名",
+      "columns": {
+        "product_id": "商品ID，主键",
+        "product_category_name": "品类名（葡语，如 beleza_saude=健康美容，71个品类，少量NULL）",
+        "product_name_lenght": "商品名长度",
+        "product_description_lenght": "描述长度",
+        "product_photos_qty": "图片数量",
+        "product_weight_g": "重量（克）",
+        "product_length_cm": "长(cm)",
+        "product_height_cm": "高(cm)",
+        "product_width_cm": "宽(cm)"
+      }
+    },
+    "sellers": {
+      "description": "卖家表：3095个卖家",
+      "columns": {
+        "seller_id": "卖家ID，主键",
+        "seller_zip_code_prefix": "卖家邮编前缀",
+        "seller_city": "卖家城市",
+        "seller_state": "卖家州"
+      }
+    },
+    "geolocation": {
+      "description": "地理坐标表：已按邮编前缀去重，用于地图可视化，一般不参与问数",
+      "columns": {
+        "geolocation_zip_code_prefix": "邮编前缀",
+        "geolocation_lat": "纬度",
+        "geolocation_lng": "经度",
+        "geolocation_city": "城市",
+        "geolocation_state": "州"
+      }
+    },
+    "product_category_name_translation": {
+      "description": "品类翻译表：葡语品类名→英语品类名（71条）。查品类维度数据时用英语名展示",
+      "columns": {
+        "product_category_name": "品类名（葡语）",
+        "product_category_name_english": "品类名（英语，如 health_beauty健康美容）"
+      }
+    }
+  }
+}

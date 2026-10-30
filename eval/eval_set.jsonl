@@ -1,0 +1,20 @@
+{"question": "总共有多少笔订单？", "gold_sql": "SELECT COUNT(*) FROM orders"}
+{"question": "各订单状态的订单数分别是多少？", "gold_sql": "SELECT order_status AS 状态, COUNT(*) AS 订单数 FROM orders GROUP BY order_status ORDER BY 订单数 DESC"}
+{"question": "2018年每个月的订单量趋势", "gold_sql": "SELECT DATE_FORMAT(order_purchase_timestamp,'%Y-%m') AS 月份, COUNT(*) AS 订单量 FROM orders WHERE order_purchase_timestamp >= '2018-01-01' AND order_purchase_timestamp < '2019-01-01' GROUP BY DATE_FORMAT(order_purchase_timestamp,'%Y-%m') ORDER BY 月份"}
+{"question": "平台总销售额是多少？（不含运费）", "gold_sql": "SELECT SUM(price) FROM order_items"}
+{"question": "2018年全年总销售额是多少？", "gold_sql": "SELECT SUM(oi.price) FROM order_items oi JOIN orders o ON o.order_id = oi.order_id WHERE o.order_purchase_timestamp >= '2018-01-01' AND o.order_purchase_timestamp < '2019-01-01'"}
+{"question": "2017年每个月的销售额趋势", "gold_sql": "SELECT DATE_FORMAT(o.order_purchase_timestamp,'%Y-%m') AS 月份, SUM(oi.price) AS 销售额 FROM order_items oi JOIN orders o ON o.order_id = oi.order_id WHERE o.order_purchase_timestamp >= '2017-01-01' AND o.order_purchase_timestamp < '2018-01-01' GROUP BY DATE_FORMAT(o.order_purchase_timestamp,'%Y-%m') ORDER BY 月份"}
+{"question": "平均每笔订单的金额是多少？", "gold_sql": "SELECT AVG(total) FROM (SELECT order_id, SUM(price) AS total FROM order_items GROUP BY order_id) t"}
+{"question": "销售额最高的10个品类是哪些？", "gold_sql": "SELECT t.product_category_name_english AS 品类, SUM(oi.price) AS 销售额 FROM order_items oi JOIN products p ON p.product_id = oi.product_id JOIN product_category_name_translation t ON t.product_category_name = p.product_category_name GROUP BY t.product_category_name_english ORDER BY 销售额 DESC LIMIT 10"}
+{"question": "客户数最多的5个州是哪些？", "gold_sql": "SELECT customer_state AS 州, COUNT(DISTINCT customer_unique_id) AS 客户数 FROM customers GROUP BY customer_state ORDER BY 客户数 DESC LIMIT 5"}
+{"question": "各州的销售额排行前5", "gold_sql": "SELECT c.customer_state AS 州, SUM(oi.price) AS 销售额 FROM order_items oi JOIN orders o ON o.order_id = oi.order_id JOIN customers c ON c.customer_id = o.customer_id GROUP BY c.customer_state ORDER BY 销售额 DESC LIMIT 5"}
+{"question": "各支付方式的订单数分别是多少？", "gold_sql": "SELECT payment_type AS 支付方式, COUNT(DISTINCT order_id) AS 订单数 FROM order_payments GROUP BY payment_type ORDER BY 订单数 DESC"}
+{"question": "选择分期的订单平均分了几期？", "gold_sql": "SELECT AVG(payment_installments) FROM order_payments WHERE payment_installments > 1"}
+{"question": "订单评价分数的分布情况", "gold_sql": "SELECT review_score AS 评分, COUNT(*) AS 数量 FROM order_reviews GROUP BY review_score ORDER BY 评分"}
+{"question": "平台的平均评分是多少？", "gold_sql": "SELECT AVG(review_score) FROM order_reviews"}
+{"question": "订单平均比预计时间早或晚几天送达？", "gold_sql": "SELECT AVG(DATEDIFF(order_delivered_customer_date, order_estimated_delivery_date)) FROM orders WHERE order_delivered_customer_date IS NOT NULL"}
+{"question": "有多少客户发生过复购（下单超过一次）？", "gold_sql": "SELECT COUNT(*) FROM (SELECT customer_unique_id FROM customers GROUP BY customer_unique_id HAVING COUNT(*) > 1) t"}
+{"question": "每笔订单平均买几件商品？", "gold_sql": "SELECT AVG(cnt) FROM (SELECT order_id, COUNT(*) AS cnt FROM order_items GROUP BY order_id) t"}
+{"question": "运费占总销售额的比例是多少？", "gold_sql": "SELECT SUM(freight_value) * 1.0 / SUM(price) FROM order_items"}
+{"question": "卖家数量最多的3个城市是哪些？", "gold_sql": "SELECT seller_city AS 城市, COUNT(*) AS 卖家数 FROM sellers GROUP BY seller_city ORDER BY 卖家数 DESC LIMIT 3"}
+{"question": "2018年8月有多少笔订单？", "gold_sql": "SELECT COUNT(*) FROM orders WHERE order_purchase_timestamp >= '2018-08-01' AND order_purchase_timestamp < '2018-09-01'"}

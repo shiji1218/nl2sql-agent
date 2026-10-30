@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NL2SQL Agent · 智能问数</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0f1117; --panel: #171a23; --card: #1e2230; --border: #2a2f42;
+    --text: #e8eaf2; --muted: #8b91a7; --accent: #5b8cff; --accent2: #7c5bff;
+    --ok: #3ecf8e; --err: #ff6b6b;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header .logo {
+    width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); font-weight: 700; font-size: 15px;
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .sub { font-size: 12px; color: var(--muted); }
+  #status { margin-left: auto; font-size: 12px; color: var(--muted); }
+  #status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: var(--err); }
+  #status.on .dot { background: var(--ok); }
+
+  #chat { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  #chat::-webkit-scrollbar { width: 8px; } #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .msg { max-width: 860px; width: 100%; margin: 0 auto; }
+  .user .bubble {
+    margin-left: auto; width: fit-content; max-width: 70%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    padding: 10px 16px; border-radius: 14px 14px 4px 14px; font-size: 14px;
+  }
+  .assistant .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 18px; font-size: 14px; line-height: 1.7;
+  }
+  .assistant .card .loading { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .answer-text { white-space: pre-wrap; }
+  .meta { margin-top: 10px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px; }
+  .meta span { background: var(--panel); border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px; }
+  .meta .ok { color: var(--ok); border-color: rgba(62,207,142,.3); }
+
+  details { margin-top: 12px; }
+  details summary { cursor: pointer; font-size: 12px; color: var(--muted); user-select: none; }
+  details pre {
+    margin-top: 8px; background: #12141c; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-size: 12.5px; overflow-x: auto; color: #9ecbff;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  .table-wrap { margin-top: 12px; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { padding: 7px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { background: var(--panel); color: var(--muted); font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+  .chart { margin-top: 12px; width: 100%; height: 300px; }
+
+  .followups { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .sub-block {
+    margin-top: 12px; padding: 10px 14px;
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px;
+  }
+  .sub-title { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+  .followups button {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    font-size: 12px; padding: 6px 12px; border-radius: 999px; cursor: pointer; transition: .15s;
+  }
+  .followups button:hover { border-color: var(--accent); color: var(--accent); }
+
+  .error-box { background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.35); border-radius: 8px; padding: 10px 14px; color: #ffb3b3; font-size: 13px; }
+
+  #settingsBtn {
+    margin-left: 12px; background: var(--card); border: 1px solid var(--border);
+    color: var(--text); font-size: 12.5px; padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: .15s;
+  }
+  #settingsBtn:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-mask {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 50; align-items: center; justify-content: center;
+  }
+  .modal-mask.show { display: flex; }
+  .modal { width: 480px; max-width: 92vw; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+  .modal h2 { font-size: 15px; margin-bottom: 18px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .field input {
+    width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 13px; padding: 9px 12px; outline: none;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .btn { flex: 1; padding: 9px 0; border-radius: 8px; font-size: 13px; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; color: #fff; font-weight: 600; }
+  .test-result { margin-top: 12px; font-size: 12.5px; display: none; padding: 8px 12px; border-radius: 8px; line-height: 1.5; }
+  .test-result.ok { display: block; color: var(--ok); background: rgba(62,207,142,.08); border: 1px solid rgba(62,207,142,.3); }
+  .test-result.err { display: block; color: #ffb3b3; background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.35); }
+
+  footer { border-top: 1px solid var(--border); background: var(--panel); padding: 16px 24px 20px; }
+  .samples { max-width: 860px; margin: 0 auto 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .samples button {
+    background: transparent; border: 1px dashed var(--border); color: var(--muted);
+    font-size: 12px; padding: 5px 12px; border-radius: 999px; cursor: pointer; transition: .15s;
+  }
+  .samples button:hover { color: var(--accent); border-color: var(--accent); }
+  .input-row { max-width: 860px; margin: 0 auto; display: flex; gap: 10px; }
+  #input {
+    flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 14px; padding: 12px 16px; outline: none; resize: none;
+    font-family: inherit; height: 46px; line-height: 22px;
+  }
+  #input:focus { border-color: var(--accent); }
+  #send {
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; color: #fff;
+    font-size: 14px; font-weight: 600; padding: 0 22px; border-radius: 12px; cursor: pointer;
+  }
+  #send:disabled { opacity: .5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">SQL</div>
+  <div>
+    <h1>NL2SQL Agent · 智能问数</h1>
+  </div>
+  <div id="status"><span class="dot"></span>连接中…</div>
+  <button id="settingsBtn">⚙ API 配置</button>
+</header>
+
+<main id="chat"></main>
+
+<footer>
+  <div class="samples" id="samples"></div>
+  <div class="input-row">
+    <textarea id="input" placeholder="用自然语言问数据，例如：2025年每个月的销售额趋势" rows="1"></textarea>
+    <button id="send">发送</button>
+  </div>
+</footer>
+
+<div class="modal-mask" id="configMask">
+  <div class="modal">
+    <h2>⚙ API 配置</h2>
+    <div class="field">
+      <label>API Key（留空表示不修改）</label>
+      <input id="cfgKey" type="password" placeholder="sk-..." autocomplete="off">
+    </div>
+    <div class="field">
+      <label>接口地址（OpenAI 兼容 Base URL）</label>
+      <input id="cfgBaseUrl" type="text" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>模型名称</label>
+      <input id="cfgModel" type="text" list="modelList" autocomplete="off">
+      <datalist id="modelList">
+        <option value="qwen-plus"></option>
+        <option value="qwen-max"></option>
+        <option value="qwen3.7-plus"></option>
+        <option value="qwen3.7-max"></option>
+        <option value="deepseek-v3-aliyun"></option>
+        <option value="deepseek-v4-flash"></option>
+      </datalist>
+    </div>
+    <div class="test-result" id="testResult"></div>
+    <div class="modal-actions">
+      <button class="btn" id="testBtn">测试连接</button>
+      <button class="btn" id="closeBtn">取消</button>
+      <button class="btn primary" id="saveBtn">保存并生效</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SAMPLES = [
+  "总共有多少笔订单？",
+  "2017年每个月的销售额趋势",
+  "销售额最高的10个品类是哪些？",
+  "各支付方式的订单数分别是多少？",
+  "有多少客户发生过复购？",
+  "订单平均比预计时间早还是晚几天送达？",
+];
+let history = [];   // [{question, sql}] 最近几轮，用于多轮指代
+let busy = false;
+
+const chat = document.getElementById("chat");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+
+// 健康检查
+fetch("/api/health").then(r => r.json()).then(() => {
+  const s = document.getElementById("status");
+  s.classList.add("on"); s.innerHTML = '<span class="dot"></span>已连接';
+}).catch(() => {});
+
+SAMPLES.forEach(q => {
+  const b = document.createElement("button");
+  b.textContent = q;
+  b.onclick = () => ask(q);
+  document.getElementById("samples").appendChild(b);
+});
+
+function addEl(html) {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return div.firstElementChild;
+}
+function scroll() { chat.scrollTop = chat.scrollHeight; }
+
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function renderTable(columns, rows) {
+  let html = '<div class="table-wrap"><table><thead><tr>' +
+    columns.map(c => `<th>${esc(c)}</th>`).join("") + "</tr></thead><tbody>" +
+    rows.map(r => "<tr>" + r.map(v => `<td>${v === null ? "-" : esc(v)}</td>`).join("") + "</tr>").join("") +
+    "</tbody></table></div>";
+  return html;
+}
+
+function renderChart(el, chart, columns, rows) {
+  if (!window.echarts || !chart) return;
+  const c = echarts.init(el);
+  const labels = rows.map(r => String(r[0] ?? ""));
+  const values = rows.map(r => r[r.length - 1]);
+  let option;
+  if (chart === "pie") {
+    option = {
+      tooltip: { trigger: "item" },
+      series: [{ type: "pie", radius: ["38%", "68%"], data: rows.map(r => ({ name: String(r[0]), value: r[1] })) }],
+    };
+  } else {
+    option = {
+      tooltip: { trigger: "axis" },
+      grid: { left: 60, right: 20, bottom: 40, top: 20 },
+      xAxis: { type: "category", data: labels, axisLabel: { rotate: labels.length > 8 ? 30 : 0, color: "#8b91a7" } },
+      yAxis: { type: "value", axisLabel: { color: "#8b91a7" }, splitLine: { lineStyle: { color: "#2a2f42" } } },
+      series: [{
+        type: chart === "line" ? "line" : "bar", data: values, smooth: true,
+        itemStyle: { color: "#5b8cff" }, barMaxWidth: 40,
+        areaStyle: chart === "line" ? { opacity: 0.15 } : undefined,
+      }],
+    };
+  }
+  c.setOption(option);
+  window.addEventListener("resize", () => c.resize());
+}
+
+async function ask(q) {
+  if (busy || !q.trim()) return;
+  busy = true; sendBtn.disabled = true; input.value = "";
+
+  chat.appendChild(addEl(`<div class="msg user"><div class="bubble">${esc(q)}</div></div>`));
+  const card = addEl(`<div class="msg assistant"><div class="card"><div class="loading"><div class="spinner"></div>思考中：理解问题 → 选择数据表 → 生成 SQL → 执行校验…</div></div></div>`);
+  chat.appendChild(card); scroll();
+
+  try {
+    const resp = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, history }),
+    });
+    const data = await resp.json();
+    const inner = card.querySelector(".card");
+
+    if (!data.success) {
+      inner.innerHTML = `<div class="error-box">查询失败：${esc(data.error)}</div>` +
+        (data.sql ? `<details><summary>查看最后一次生成的 SQL</summary><pre>${esc(data.sql)}</pre></details>` : "") +
+        `<div class="meta"><span>${data.elapsed_ms ?? "-"} ms</span></div>`;
+      return;
+    }
+
+    // 复合问题：拆分成多个子问题分别执行，渲染多个结果块
+    if (data.compound && data.sub_results) {
+      (data.sub_results || []).forEach(r => {
+        if (r.success && r.sql) history.push({ question: r.question, sql: r.sql });
+      });
+      if (history.length > 3) history = history.slice(-3);
+
+      let html = `<div class="answer-text">${esc(data.answer)}</div>` +
+        `<div class="meta"><span class="ok">✓ 复合查询</span><span>已拆分为 ${data.sub_results.length} 个子问题</span><span>${data.elapsed_ms} ms</span></div>`;
+      data.sub_results.forEach((sub, i) => {
+        html += `<div class="sub-block"><div class="sub-title">子问题 ${i + 1}：${esc(sub.question)}</div>`;
+        if (sub.success) {
+          html += `<div class="meta"><span class="ok">✓ 成功</span><span>${sub.attempts} 次尝试</span><span>${sub.elapsed_ms} ms</span><span>${sub.row_count} 行</span></div>` +
+            `<details open><summary>SQL</summary><pre>${esc(sub.sql)}</pre></details>` +
+            (sub.rows && sub.rows.length ? renderTable(sub.columns, sub.rows) : "") +
+            (sub.chart && sub.rows.length > 1 ? `<div class="chart" data-sub="${i}"></div>` : "");
+        } else {
+          html += `<div class="error-box">查询失败：${esc(sub.error)}</div>`;
+        }
+        html += `</div>`;
+      });
+      if (data.followups && data.followups.length) html += `<div class="followups"></div>`;
+      inner.innerHTML = html;
+
+      inner.querySelectorAll(".chart[data-sub]").forEach(el => {
+        const sub = data.sub_results[+el.dataset.sub];
+        renderChart(el, sub.chart, sub.columns, sub.rows);
+      });
+      const fu = inner.querySelector(".followups");
+      if (fu) data.followups.forEach(f => {
+        const b = document.createElement("button");
+        b.textContent = f; b.onclick = () => ask(f); fu.appendChild(b);
+      });
+      return;
+    }
+
+    history.push({ question: q, sql: data.sql });
+    if (history.length > 3) history = history.slice(-3);
+
+    inner.innerHTML = `<div class="answer-text">${esc(data.answer)}</div>` +
+      `<div class="meta"><span class="ok">✓ 成功</span><span>${data.attempts} 次尝试</span><span>${data.elapsed_ms} ms</span><span>${data.row_count} 行${data.truncated ? "(已截断)" : ""}</span><span>涉及表: ${esc((data.tables_used||[]).join(", "))}</span></div>` +
+      `<details open><summary>SQL</summary><pre>${esc(data.sql)}</pre></details>` +
+      (data.rows && data.rows.length ? renderTable(data.columns, data.rows) : "") +
+      (data.chart && data.rows.length > 1 ? `<div class="chart"></div>` : "") +
+      (data.followups && data.followups.length ? `<div class="followups"></div>` : "");
+
+    const chartEl = inner.querySelector(".chart");
+    if (chartEl) renderChart(chartEl, data.chart, data.columns, data.rows);
+    const fu = inner.querySelector(".followups");
+    if (fu) data.followups.forEach(f => {
+      const b = document.createElement("button");
+      b.textContent = f; b.onclick = () => ask(f); fu.appendChild(b);
+    });
+  } catch (e) {
+    card.querySelector(".card").innerHTML = `<div class="error-box">请求异常：${esc(e.message)}（后端是否已启动？）</div>`;
+  } finally {
+    busy = false; sendBtn.disabled = false; scroll();
+  }
+}
+
+// ===== API 配置弹窗 =====
+const configMask = document.getElementById("configMask");
+const testResultEl = document.getElementById("testResult");
+
+function cfgPayload() {
+  return {
+    api_key: document.getElementById("cfgKey").value.trim() || null,
+    llm_base_url: document.getElementById("cfgBaseUrl").value.trim() || null,
+    llm_model: document.getElementById("cfgModel").value.trim() || null,
+  };
+}
+document.getElementById("settingsBtn").onclick = async () => {
+  try {
+    const cfg = await (await fetch("/api/config")).json();
+    document.getElementById("cfgBaseUrl").value = cfg.llm_base_url || "";
+    document.getElementById("cfgModel").value = cfg.llm_model || "";
+  } catch (e) { /* 配置读取失败也允许打开弹窗手动填写 */ }
+  document.getElementById("cfgKey").value = "";
+  testResultEl.className = "test-result"; testResultEl.textContent = "";
+  configMask.classList.add("show");
+};
+document.getElementById("closeBtn").onclick = () => configMask.classList.remove("show");
+configMask.addEventListener("click", e => { if (e.target === configMask) configMask.classList.remove("show"); });
+
+document.getElementById("testBtn").onclick = async () => {
+  testResultEl.className = "test-result"; testResultEl.textContent = "测试中…";
+  try {
+    const r = await (await fetch("/api/config/test", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cfgPayload()),
+    })).json();
+    testResultEl.className = "test-result " + (r.ok ? "ok" : "err");
+    testResultEl.textContent = r.ok ? "✓ " + r.message : "✗ " + r.error;
+  } catch (e) {
+    testResultEl.className = "test-result err";
+    testResultEl.textContent = "✗ 请求异常：" + e.message;
+  }
+};
+document.getElementById("saveBtn").onclick = async () => {
+  try {
+    const r = await (await fetch("/api/config", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cfgPayload()),
+    })).json();
+    if (r.ok) {
+      document.getElementById("cfgKey").value = "";
+      testResultEl.className = "test-result ok";
+      testResultEl.textContent = "✓ 已保存并热生效（写入 .env，立即按新配置调用）";
+    } else {
+      testResultEl.className = "test-result err";
+      testResultEl.textContent = "✗ 保存失败";
+    }
+  } catch (e) {
+    testResultEl.className = "test-result err";
+    testResultEl.textContent = "✗ 请求异常：" + e.message;
+  }
+};
+
+sendBtn.onclick = () => ask(input.value);
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input.value); }
+});
+// 初始欢迎
+chat.appendChild(addEl(`<div class="msg assistant"><div class="card">👋 我是你的数据分析助手。下方点击示例问题或直接输入，我会把你的问题翻译成 SQL 执行，并用图表和结论回答。<br><br>当前连接的是 <b>Olist 巴西电商真实数据集</b>（约 10 万订单，2016-2018）：customers / orders / order_items / order_payments / order_reviews / products / sellers。</div></div>`));
+</script>
+</body>
+</html>

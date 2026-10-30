@@ -1,0 +1,17 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: nl2sql-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: nl2sql_demo
+      MYSQL_USER: nl2sql
+      MYSQL_PASSWORD: nl2sql123
+    ports:
+      - "3306:3306"
+    volumes:
+      - nl2sql_mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+volumes:
+  nl2sql_mysql_data:
